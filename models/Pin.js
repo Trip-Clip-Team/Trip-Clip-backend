@@ -1,27 +1,35 @@
-/** @format */
-
 const mongoose = require("mongoose");
 
 const PinSchema = new mongoose.Schema(
 	{
-		username: {
+		createdBy: {
 			type: String,
-			require: true,
+			required: true,
 		},
 		title: {
 			type: String,
-			require: true,
+			required: true,
+			min: 3,
 		},
-		description: {
-			type: String,
-			require: true,
-		},
-		rating: {
-			type: Number,
-			require: true,
-			min: 0,
-			max: 5,
-		},
+
+		description: [{
+			username: {
+				type: String,
+				require: true,
+			},
+			body: {
+				type: String,
+				require: true,
+			},
+
+			rating: {
+				type: Number,
+				require: true,
+				min: 0,
+				max: 5,
+			},
+		}
+		],
 		lat: {
 			type: Number,
 			require: true,
@@ -31,7 +39,7 @@ const PinSchema = new mongoose.Schema(
 			require: true,
 		},
 	},
-	{timestamps: true}
+	{ timestamps: true }
 );
 // to update the user
 module.exports = mongoose.model("Pin", PinSchema);
