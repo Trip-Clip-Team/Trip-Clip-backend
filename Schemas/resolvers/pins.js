@@ -1,9 +1,9 @@
-const { AuthenticationError, UserInputError } = require("apollo-server");
+const { AuthenticationError, UserInputError } = require("apollo-server-express");
 const checkAuth = require("../../utils/checkAuth");
 const Pin = require("../../models/Pin");
 
 
-module.exports = {
+const pins = {
 	Query: {
 		async getPins() {
 			try {
@@ -29,9 +29,9 @@ module.exports = {
 		async createPin(
 			_,
 			{ title, description: { body, rating }, lat, long },
-			context
+			data
 		) {
-			const user = checkAuth(context);
+			const user = checkAuth(data);
 			const username = user.username;
 			if (title === "") {
 				throw new UserInputError("invalid field");
@@ -54,8 +54,8 @@ module.exports = {
 
 			return pin;
 		},
-		async deletePin(_, { pinId }, context) {
-			const user = checkAuth(context);
+		async deletePin(_, { pinId }, data) {
+			const user = checkAuth(data);
 			const username = user.username;
 			const pin = await Pin.findById(pinId);
 			if (!pin) {
@@ -70,19 +70,19 @@ module.exports = {
 					throw new AuthenticationError(
 						"You can not delete this pin"
 					);
-			} catch (eror) {
+			} catch (error) {
 				throw new UserInputError(error);
 			}
 		},
 		async createDescription(
 			_,
 			{ pinId, description: { body, rating } },
-			context
+			data
 		) {
 			const pin = await Pin.findById(pinId);
 			if (!pin) throw new Error("Pin not found");
 
-			const user = checkAuth(context);
+			const user = checkAuth(data);
 			if (!user)
 				throw new AuthenticationError(
 					"You can not change this pin"
@@ -112,3 +112,5 @@ module.exports = {
 		},
 	},
 };
+
+module.exports = pins;
