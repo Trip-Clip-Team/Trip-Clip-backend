@@ -1,26 +1,31 @@
-const { ApolloServer } = require("apollo-server");
-const mongoose = require("mongoose");
-
+const { ApolloServer } = require("apollo-server-express");
+// const mongoose = require("mongoose");
+const db = require("./config/connection");
+const express = require("express");
+const { authMiddleware } = require("./utils/checkAuth");
 const typeDefs = require("./Schemas/typeDefs");
 const resolvers = require("./Schemas/resolvers");
 
-const server = new ApolloServer({
-	typeDefs,
-	resolvers,
-	context: ({ req }) => ({ req }),
-});
+const app = express();
+const PORT = process.env.PORT || 3001;
 
-mongoose
-	.connect(
-		"mongodb://admin:admin@cluster0-shard-00-00.5csgs.mongodb.net:27017,cluster0-shard-00-01.5csgs.mongodb.net:27017,cluster0-shard-00-02.5csgs.mongodb.net:27017/travelMap?ssl=true&replicaSet=atlas-6e51qf-shard-0&authSource=admin&retryWrites=true&w=majority",
-		{
-			useUnifiedTopology: true,
-			useCreateIndex: true,
-			useNewUrlParser: true,
-		}
-	)
-	.then(() => {
-		console.log("mongo connected");
-		return server.listen(process.env.PORT || 5000);
-	})
-	.then(() => console.log("Server Running"));
+const startServer = async () => {
+	const server = new ApolloServer({
+		typeDefs,
+		resolvers,
+		context: authMiddleware,
+	});
+	await server.start();
+	server.applyMiddleware({ app });
+};
+startServer();
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
+
+if (process.env.NODE_ENV === "production") {
+	app.use(express.static(path.join(__dirname, "../client/build")));
+}
+
+db.once("open", () => {
+	app.listen(PORT, () => console.log(`🌍 Now listening on localhost:${PORT}`));
+});
