@@ -1,121 +1,104 @@
-const { AuthenticationError, UserInputError } = require("apollo-server-express");
-const Pin = require("../../models/Pin");
-const checkAuth = require("../../utils/checkAuth");
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
+const { UserInputError } = require("apollo-server");
 
-const users = {
-    Query: {
-        async getPins() {
-            try {
-                const pins = await Pin.find();
-                return pins;
-            } catch (error) {
-                throw new Error(error);
-            }
-        },
+const User = require("../../models/User");
+const { SECRET_KEY } = require("../../secrets");
+const { validateRegisterInput } = require("../../utils/validators");
+const { validateLoginInput } = require("../../utils/validators");
 
-        async getPin(_, { pinId }) {
-            try {
-                const pin = Pin.findById(pinId);
-                if (pin) return pin;
-                else throw new Error("Pin not found");
-            } catch (error) {
-                throw new Error(error);
-            }
-        },
-    },
+function generateToken(user) {
+	return jwt.sign(
+		{
+			id: user.id,
+			email: user.email,
+			username: user.username,
+		},
+		SECRET_KEY,
+		{ expiresIn: "1h" }
+	);
+}
 
-    Mutation: {
-        async createPin(
-            _,
-            { title, desc: { body, rating }, lat, long },
-            data
-        ) {
-            const user = checkAuth(data);
-            const username = user.username;
-            if (title === "") {
-                throw new UserInputError("Can not be empty");
-            }
-            if (body.trim() === "") {
-                throw new UserInputError("Can not be empty");
-            }
-            const newPin = new Pin({
-                createdBy: username,
-                title,
-                description: {
-                    username,
-                    body,
-                    rating,
-                    
-                },
-                lat,
-                long,
-            });
-            const pin = await newPin.save();
+module.exports = {
+	Mutation: {
+		async login(_, { username, password }) {
+			const { errors, valid } = validateLoginInput(username, password);
 
-            return pin;
-        },
+			if (!valid) {
+				throw new UserInputError("Errors", { errors });
+			}
+			const user = await User.findOne({ username });
 
-        async deletePin(_, { pinId }, data) {
-            const user = checkAuth(data);
-            const username = user.username;
-            const pin = await Pin.findById(pinId);
-            if (!pin) {
-                throw new UserInputError("No pin with this id");
-            }
-            try {
-                if (pin.createdBy === username) {
-                    await pin.delete();
-                    const pins = await Pin.find();
-                    return pins;
-                } else
-                    throw new AuthenticationError(
-                        "You are not able to delete this pin"
-                    );
-            } catch (error) {
-                throw new UserInputError(error);
-            }
-        },
-        async createDescription(
-            _,
-            { pinId, desc: { body, rating} },
-            data
-        ) {
-            const pin = await Pin.findById(pinId);
-            if (!pin) throw new Error("Pin does not exist");
+			if (!user) {
+				errors.general = "user not found";
+				throw new UserInputError("user not found", { errors });
+			}
 
-            const user = checkAuth(data);
-            if (!user)
-                throw new AuthenticationError(
-                    "You are not able to add details to the pin"
-                );
+			const match = await bcrypt.compare(password, user.password);
+			if (!match) {
+				errors.general = "Wrong credentials";
+				throw new UserInputError("Wrong Credentials", { errors });
+			}
 
-            if (body === "") throw new Error("Can not be empty");
+			const token = generateToken(user);
 
-            if (rating === null) throw new Error("Can not be Null");
+			return {
+				...user._doc,
+				id: user._id,
+				token,
+			};
+		},
+		async register(
+			_,
+			{ registerInput: { username, email, password, confirmPassword } },
+			context,
+			info
+		) {
+			
+			const { valid, errors } = validateRegisterInput(
+				username,
+				email,
+				password,
+				confirmPassword
+			);
+			if (!valid) {
+				throw new UserInputError("Errors", { errors });
+			}
+			
+			const user = await User.findOne({ username });
+			if (user) {
+				throw new UserInputError("Username already taken", {
+					errors: {
+						username: "This username is taken",
+					},
+				});
+			}
+			const userEmail = await User.findOne({ email });
+			if (userEmail) {
+				throw new UserInputError("Email already taken", {
+					errors: {
+						username: "This email is taken",
+					},
+				});
+			}
+			
+			password = await bcrypt.hash(password, 12);
 
-            if (publishedAt === "") throw new Error("Can not be Null");
+			const newUser = new User({
+				email,
+				username,
+				password,
+				createdAt: new Date().toISOString(),
+			});
 
-            const username = user.username;
+			const res = await newUser.save();
+			const token = generateToken(res);
 
-            const addedDescription = {
-                username,
-                body,
-                rating,
-               
-            };
-
-            pin.description.push(addedDescription);
-
-            try {
-                await pin.save();
-                const pins = await Pin.find();
-                return pins;
-            } catch (error) {
-                throw new Error("Can not add description");
-            }
-        },
-    },
-
+			return {
+				...res._doc,
+				id: res._id,
+				token,
+			};
+		},
+	},
 };
-
-module.exports = users ;
